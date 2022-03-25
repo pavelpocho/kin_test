@@ -1,0 +1,10 @@
+<launch>
+    <!--<include file="$(find robotics_cswk_kin)/launch/start_kin_services.launch" />-->
+
+    <node
+        pkg="kin_test"
+        type="main.py"
+        name="ikintest"
+        output="screen"
+    />
+</launch>

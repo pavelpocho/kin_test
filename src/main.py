@@ -1,7 +1,5 @@
 #! /usr/bin/env python
 
-from mimetypes import init
-from re import I
 import rospy
 import math
 from robotics_cswk_kin.srv import IKinMsg, IKinMsgRequest
@@ -12,9 +10,11 @@ from open_manipulator_msgs.srv import SetJointPosition
 
 from cube_locator.msg import RealCubeArray, RealCube
 
-rospy.init_node("ikintest")
+rospy.init_node("main_program")
 proxy = rospy.ServiceProxy("/inv_kin", IKinMsg)
 rospy.wait_for_service("/inv_kin")
+
+setPose = rospy.ServiceProxy('/goal_joint_space_path', SetJointPosition)
 
 i = 0
 
@@ -31,6 +31,10 @@ z_red = []
 x_yellow = []
 y_yellow = []
 z_yellow = []
+
+x_blue = []
+y_blue = []
+z_blue = []
 
 def real_cube_data_handler(msg):
 
@@ -62,6 +66,11 @@ def real_cube_data_handler(msg):
             x_red.append(c.position.x)
             y_red.append(c.position.y)
             z_red.append(c.position.z)
+        elif c.color.data == "blue":
+            print("adding to blue")
+            x_blue.append(c.position.x)
+            y_blue.append(c.position.y)
+            z_blue.append(c.position.z)
 
     # if len(x) > 0 and len(msg.cubes) > 0:
     #     rospy.loginfo(sum(x) / len(x))
@@ -83,7 +92,6 @@ def move_to_position(x, y, z, angle, time):
     if not response.success.data:
         print('Failed inv kin')
     else:
-        setPose = rospy.ServiceProxy('/goal_joint_space_path', SetJointPosition)
 
         rospy.wait_for_service('/goal_joint_space_path')
 
@@ -116,18 +124,18 @@ def close_gripper():
 real_cubes_sub = rospy.Subscriber('/real_cubes', RealCubeArray, real_cube_data_handler)
 setGripper = rospy.ServiceProxy('goal_tool_control', SetJointPosition)
 
-move_to_position(0.15, 0, 0.1, math.pi / 4, 1.7)
+move_to_position(0.15, 0.05, 0.1, math.pi / 4, 1.7)
 
 initialized = True
 
 for k in range(2):
-    if len(x_yellow) > 1 and len(x_red) > 1:
+    if len(x_yellow) > 1 and len(x_blue) > 1:
         break
     print("Going for position", k)
     angle = math.pi / 2
     if k > 0:
         angle = math.pi / 4
-    move_to_position(0.05 + 0.08 * k, 0, 0.1, angle, 1.0)
+    move_to_position(0.05 + 0.08 * k, 0.05, 0.1, angle, 1.0)
     s = rospy.Rate(3)
     measure = True
     s.sleep()
@@ -135,7 +143,7 @@ for k in range(2):
 
 scanned = True
 
-while not (scanned and not executed and len(x_yellow) > 0 and len(x_red) > 0):
+while not (scanned and not executed and len(x_yellow) > 0):
     sl = rospy.Rate(1)
     sl.sleep()
 
@@ -150,12 +158,12 @@ elif math.sqrt((sum(x_yellow) / len(x_yellow)) ** 2 + (sum(y_yellow) / len(y_yel
     z = -0.045
 move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z + 0.05, angle, 2.0)
 move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z, angle, 2.0)
-close_gripper()
-move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z + 0.1, angle, 2.0)
-move_to_position(sum(x_red) / len(x_red) - 0.005, sum(y_red) / len(y_red), z + 0.1, angle, 2.0)
-move_to_position(sum(x_red) / len(x_red) - 0.005, sum(y_red) / len(y_red), z + 0.04, angle, 2.0)
-open_gripper()
+# close_gripper()
+# move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z + 0.1, angle, 2.0)
+# move_to_position(sum(x_blue) / len(x_blue) - 0.005, sum(y_blue) / len(y_blue), z + 0.1, angle, 2.0)
+# move_to_position(sum(x_blue) / len(x_blue) - 0.005, sum(y_blue) / len(y_blue), z + 0.04, angle, 2.0)
+# open_gripper()
 
-move_to_position(0.15, 0, 0.1, math.pi / 4, 3.0)
+# move_to_position(0.15, 0, 0.1, math.pi / 4, 3.0)
 
 done = True

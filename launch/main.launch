@@ -3,7 +3,7 @@
 
     <node
         pkg="kin_test"
-        type="main_new.py"
+        type="main.py"
         name="main_program"
         output="screen"
     />

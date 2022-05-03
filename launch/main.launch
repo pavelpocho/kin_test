@@ -3,8 +3,8 @@
 
     <node
         pkg="kin_test"
-        type="main.py"
-        name="ikintest"
+        type="main_new.py"
+        name="main_program"
         output="screen"
     />
 </launch>

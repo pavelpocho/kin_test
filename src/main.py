@@ -124,7 +124,7 @@ def close_gripper():
 real_cubes_sub = rospy.Subscriber('/real_cubes', RealCubeArray, real_cube_data_handler)
 setGripper = rospy.ServiceProxy('goal_tool_control', SetJointPosition)
 
-move_to_position(0.15, 0.05, 0.1, math.pi / 4, 1.7)
+move_to_position(0.15, 0, 0.1, math.pi / 4, 1.7)
 
 initialized = True
 
@@ -135,7 +135,7 @@ for k in range(2):
     angle = math.pi / 2
     if k > 0:
         angle = math.pi / 4
-    move_to_position(0.05 + 0.08 * k, 0.05, 0.1, angle, 1.0)
+    move_to_position(0.05 + 0.08 * k, 0, 0.1, angle, 1.0)
     s = rospy.Rate(3)
     measure = True
     s.sleep()

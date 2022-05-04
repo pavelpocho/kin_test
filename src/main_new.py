@@ -1,7 +1,5 @@
 #! /usr/bin/env python
 
-from mimetypes import init
-from re import I
 import rospy
 import math
 from robotics_cswk_kin.srv import IKinMsg, IKinMsgRequest
@@ -11,6 +9,23 @@ from open_manipulator_msgs.msg import JointPosition
 from open_manipulator_msgs.srv import SetJointPosition
 
 from cube_locator.msg import RealCubeArray, RealCube
+
+CUBE_POSITIONS_TOPIC_NAME = '/real_cubes'
+
+class CubeInfo:
+
+    def __init__(self, point, id, color):
+        self.id = id
+        self.point = point
+        self.alpha_correct = False
+        self.r_correct = False
+        self.color = color
+
+    def alpha_corrected(self):
+        self.alpha_correct = True
+    
+    def r_corrected(self):
+        self.r_correct = True
 
 class DistanceZone:
 
@@ -34,6 +49,8 @@ class MainProgram:
         # -1. Setup everything that's needed
         self.sequence_complete = False
         self.searching = False
+        # colors excluded from search
+        self.excluded_colors = []
         self.move_time = 1.4
         self.search_rate = 3
         self.search_z = 0.1
@@ -45,7 +62,7 @@ class MainProgram:
         self.red_cube_locations = []
         self.blue_cube_locations = []
 
-        self.final_cube_locations = []
+        self.cube_infos = []
 
         self.setup()
 
@@ -62,25 +79,7 @@ class MainProgram:
 
         # 3. We now have a map of cubes
         # 4. Assess the situation
-
-        # 4x. Steps for analysis:
-
-        # This is tricky. Even if they are not directly behind one another,
-        # it's possible one will be blocking the other.
-        # So a systematic solution is needed for this:
-
-        # a) Always work from the inside.
-        # PP1: Two cubes have a very similar alpha.
-        # Solution: Move between them and move them apart, then start again.
-        # b) Make sure no two cubes are at the same angle behind each other
-        # c) Look at their radius zones
-        # d) Determine a middle zone
-        # e) Move all cubes to the middle zone next to each other
-        # f) Stack them in whatever order
-        # 5a. They are well positioned
-        # 5b. The are next to each other
-        # 5c. They are behind each other
-        # 5d. They are different distances away
+        self.assess_situation()
 
         pass
 
@@ -90,6 +89,8 @@ class MainProgram:
         rospy.wait_for_service("/inv_kin")
         self.set_pose_proxy = rospy.ServiceProxy('/goal_joint_space_path', SetJointPosition)
         rospy.wait_for_service('/goal_joint_space_path')
+        self.set_gripper = rospy.ServiceProxy('/goal_tool_control', SetJointPosition)
+        rospy.wait_for_service('/goal_tool_control')
 
     def specify_distance_zones(self):
         for i in range(10):
@@ -103,19 +104,19 @@ class MainProgram:
             )
 
     def sub_to_cube_info(self):
-        self.cube_position_subscriber = rospy.Subscriber('/real_cubes', RealCubeArray, self.cube_info_handler)
+        self.cube_position_subscriber = rospy.Subscriber(CUBE_POSITIONS_TOPIC_NAME, RealCubeArray, self.cube_info_handler)
 
     def cube_info_handler(self, msg):
         if self.sequence_complete or not self.searching:
             return
 
         for cube in msg.cubes:
-            if cube.color.data == 'yellow':
+            if cube.color.data == 'yellow' and not 'yellow' in self.excluded_colors:
                 self.yellow_cube_locations.append(cube.position)
-            elif cube.color.data == 'red':
+            elif cube.color.data == 'red' and not 'red' in self.excluded_colors:
                 self.red_cube_locations.append(cube.position)
-            elif cube.color.data == 'blue':
-                self.red_cube_locations.append(cube.position)
+            elif cube.color.data == 'blue' and not 'blue' in self.excluded_colors:
+                self.blue_cube_locations.append(cube.position)
 
     def move_to_position(self, x, y, z, beta):
         request = IKinMsgRequest()
@@ -140,9 +141,9 @@ class MainProgram:
             r.sleep()
 
     def move_to_position_by_r_and_alpha(self, r, alpha, z, beta):
-        return move_to_position(r * math.cos(alpha), r * math.sin(alpha), z, beta)
+        return self.move_to_position(r * math.cos(alpha), r * math.sin(alpha), z, beta)
 
-    def search(self):
+    def search(self, excluded_colors = []):
         # Move to initial position
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)
 
@@ -159,26 +160,129 @@ class MainProgram:
                 self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, beta)
                 s = rospy.Rate(self.search_rate)
                 self.searching = True
+                self.excluded_colors = excluded_colors
                 s.sleep()
-                self.searching = False        
+                self.searching = False
+                self.excluded_colors = []
+
+    def get_average(self, numbers):
+        return sum(numbers) / len(numbers)
+
+    def add_final_cube_location(self, locations, id, color):
+        p = Point()
+        p.x = self.get_average(map(lambda loc: loc.x, locations))
+        p.y = self.get_average(map(lambda loc: loc.y, locations))
+        p.z = self.get_average(map(lambda loc: loc.z, locations))
+        self.cube_infos.append(CubeInfo(p, id, color))
+
+    def get_r(self, point):
+        return math.sqrt(point.x ** 2 + point.y ** 2)
+
+    def get_alpha(self, point):
+        return -math.asin(point.y / self.get_r(point))
 
     def assess_situation(self):
         # Step 1: Check how many cubes we have
-        # if len(self.yellow_cube_locations) > 10:
-        #     self.final_cube_locations += 
-        # Step 2: Check their 'r' distances
-        # for cube_loc in self.final_cube_locations:
-        #     if abs(cube_loc.r - )
-        pass
+        if len(self.yellow_cube_locations) > 10:
+            self.add_final_cube_location(self.yellow_cube_locations, 1, 'yellow')
+        if len(self.red_cube_locations) > 10:
+            self.add_final_cube_location(self.red_cube_locations, 2, 'red')
+        if len(self.blue_cube_locations) > 10:
+            self.add_final_cube_location(self.blue_cube_locations, 3, 'blue')
+        
+        # The sequence is now as follows:
+        # 1. Order them by r distance
+        self.cube_infos.sort(lambda c: self.get_r(c.point))
 
-    def grab_at_coords(self):
-        pass
+        # 2a. Always move in to a smaller r position and approach from the back
+        # 2b. Move each to its own alpha section
+        alpha_sections = [
+            [-math.pi/4, -math.pi/12],
+            [-math.pi/12, math.pi/12],
+            [math.pi/12, math.pi/4]
+        ]
+        colors_to_exclude = []
+        for cube_info in self.cube_infos:
+            free_section = self.find_empty_alpha_section_for_cube(cube_info)
+            self.move_cube_on_alpha(cube_info, self.get_average(free_section))
+            # Have to look through all of the other cubes again here
+            colors_to_exclude.append(cube_info.color)
+            self.search(colors_to_exclude)
 
-    def place_at_coords(self):
-        pass
+        # 3. Move each to the right r section
+        
+        # 4. Stack
 
-    def strategize(self):
-        pass
+    def find_empty_alpha_section_for_cube(self, cube_info, alpha_sections):
+        for section in alpha_sections:
+            section_full = False
+            for other_cube_info in self.cube_infos:
+                if cube_info.id == other_cube_info.id:
+                    continue
+                if section[0] < self.get_alpha(other_cube_info.point) < section[1]:
+                    section_full = True
+            
+            if not section_full:
+                return section
+                    
+
+    def open_gripper(self):
+        # Open the gripper
+        grip_request = JointPosition()
+        grip_request.joint_name = ["gripper"] 
+        grip_request.position = [0.01] # 0.01 represents open
+        self.set_gripper(str(), grip_request, 1.0)
+        rospy.sleep(1) # Wait for the gripper to open
+
+    def close_gripper(self):
+        # Close the gripper
+        grip_request = JointPosition()
+        grip_request.joint_name = ["gripper"]  
+        grip_request.position = [-0.0065] # -0.01 represents closed
+        self.set_gripper(str(), grip_request, 1.0)
+        rospy.sleep(1) # Wait for the gripper to close
+
+    def grab_at_coords(self, r, alpha):
+        # TODO: Change this beta value according to r-zone!
+        beta = math.pi / 2
+
+        # Move 6 cm in front of the cube (where we know there is empty space)
+        # Note: This does decrease the available workspace
+        self.move_to_position_by_r_and_alpha(r - 0.06, alpha, -0.04, beta)
+        # Move to cube, grip it and get out (directly up)
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.04, beta)
+        self.close_gripper()
+        # TODO: This might limit the space. If too far away, make it go back as well or something
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.04 + 0.01, beta)
+
+    def place_at_coords(self, r, alpha, stacking = False):
+        # TODO: Change this beta value according to r-zone!
+        beta = math.pi / 2
+
+        # TODO: Check that this goes far above enough to clear the cube below if it's stacking
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.04 + 0.07, beta)
+
+        # Move to point and release
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.04 + (0.04 if stacking else 0), beta)
+        self.open_gripper()
+
+        # Move 6 cm in front of the cube (where we know there is empty space)
+        # Note: This does decrease the available workspace
+        self.move_to_position_by_r_and_alpha(r - 0.06, alpha, -0.04 + (0.04 if stacking else 0), beta)
+
+    def move_cube_on_alpha(self, cube_info, new_alpha):
+        self.grab_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
+        self.place_at_coords(self.get_r(cube_info.point), new_alpha)
+
+    # def move_cube_on_table(self, point_from, point_to):
+    #     self.grab_at_coords(point_from)
+    #     self.place_at_coords(point_to)
+
+    # def stack_cube(self, point_from, point_to):
+    #     self.grab_at_coords(point_from)
+    #     self.place_at_coords(point_to, True)
+    
+
 
 
 

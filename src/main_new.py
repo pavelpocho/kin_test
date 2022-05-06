@@ -354,13 +354,15 @@ class MainProgram:
         # The offset - 0.035 at 0, 0 at 0.35
         # y = 0.35 - r / 10
         self.move_to_position_by_r_and_alpha(r - (
-            0.02 if stacking and not second_stacking else 0 # max(0, 0.035 - r / 26) if (stacking or second_stacking) else 0
+            0.02 if stacking or second_stacking else 0 # max(0, 0.035 - r / 26) if (stacking or second_stacking) else 0
         ), alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
         self.open_gripper()
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
         self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06 + (0.14), self.get_distance_zone_angle(r - 0.08))
+        if stacking:
+            self.move_to_position_by_r_and_alpha(r - 0.08, alpha, 0.15, self.get_distance_zone_angle(r - 0.08))
 
     def move_cube_on_alpha(self, cube_info, new_alpha, stacking = False, second_stacking = False):
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)

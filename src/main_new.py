@@ -74,8 +74,10 @@ class MainProgram:
         self.searching = False
         # colors excluded from search
         self.excluded_colors = []
-        self.move_time = 0.9
-        self.search_rate = 2
+        self.move_time = 0.85
+        self.search_move_time_short = 0.5
+        self.search_move_time_long = 0.9
+        self.search_rate = 1.8
         self.search_z = 0.05
 
         self.yellow_cube_locations = []
@@ -144,7 +146,7 @@ class MainProgram:
             elif cube.color.data == 'blue' and not 'blue' in self.excluded_colors:
                 self.blue_cube_locations.append(cube.position)
 
-    def move_to_position(self, x, y, z, beta):
+    def move_to_position(self, x, y, z, beta, stacking = False, short_search = False, long_search = False):
         request = IKinMsgRequest()
         request.position = Point()
         request.position.x = float(x)
@@ -162,12 +164,12 @@ class MainProgram:
             jointRequest=JointPosition()
             jointRequest.joint_name = ['joint1', 'joint2', 'joint3', 'joint4']  
             jointRequest.position = [x.data for x in response.joint_positions]
-            self.set_pose_proxy(str(), jointRequest, self.move_time)
-            r = rospy.Rate(1 / (self.move_time * 1.2))
+            self.set_pose_proxy(str(), jointRequest, self.move_time * (3 if stacking else 1) * (1 if short_search else 1))
+            r = rospy.Rate(1 / (self.move_time * (3 if stacking else 1) * (1 if short_search else 1) * 1.1))
             r.sleep()
 
-    def move_to_position_by_r_and_alpha(self, r, alpha, z, beta):
-        return self.move_to_position(r * math.cos(alpha), r * math.sin(alpha), z, beta)
+    def move_to_position_by_r_and_alpha(self, r, alpha, z, beta, stacking = False, short_search = False, long_search = False):
+        return self.move_to_position(r * math.cos(alpha), r * math.sin(alpha), z, beta, stacking, short_search, long_search)
 
     def search(self, excluded_colors = []):
         # Move to initial position
@@ -177,14 +179,14 @@ class MainProgram:
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
         for zone_index in range(4):
-            for alpha_index in range(1):
+            for alpha_index in range(5):
                 # scan every third zone for now, if they are
                 # e.g. bigger, change this
                 r = self.distance_zones[zone_index].get_mid_r()
-                alpha = ((alpha_index) * 25) / 180.0 * math.pi
+                alpha = ((alpha_index - 2) * 14) / 180.0 * math.pi
                 beta = self.distance_zones[zone_index].get_mid_beta()
                 
-                self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, beta)
+                self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, beta, short_search=(alpha_index != 0), long_search=(alpha_index == 0))
                 s = rospy.Rate(self.search_rate)
                 self.searching = True
                 self.excluded_colors = excluded_colors
@@ -227,9 +229,9 @@ class MainProgram:
         # 2a. Always move in to a smaller r position and approach from the back
         # 2b. Move each to its own alpha section
         alpha_sections = [
-            [-90.0 / 180.0 * math.pi, -40.0 / 180.0 * math.pi],
+            [10.0 / 180.0 * math.pi, 60.0 / 180.0 * math.pi],
             [-40.0 / 180.0 * math.pi, 10.0 / 180.0 * math.pi],
-            [10.0 / 180.0 * math.pi, 60.0 / 180.0 * math.pi]
+            [-85.0 / 180.0 * math.pi, -40.0 / 180.0 * math.pi]
         ]
         colors_to_exclude = []
         for cube_info in self.cube_infos:
@@ -240,7 +242,10 @@ class MainProgram:
             colors_to_exclude.append(cube_info.color)
             if (len(self.cube_infos) == len(colors_to_exclude)):
                 break
-            self.search(colors_to_exclude)
+            # assume it doesn't knock anything out of it's place
+            # when enabling this, make sure to delete the original position of the cubes
+            # so that in case they do move, it actually works
+            # self.search(colors_to_exclude)
 
         # 3. Move each to the right r section
         # Have to update their position with camera
@@ -250,13 +255,16 @@ class MainProgram:
 
         cube_zones = []
 
+        self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2), reverse=True)
+
         for cube_info in self.cube_infos:
             for z in self.distance_zones:
                 if z.r_min < self.get_r(cube_info.point) < z.r_max:
                     cube_zones.append(z)
                     break
 
-        mid_index = round(sum(map(lambda z: z.index, cube_zones)) / len(cube_zones))
+        mid_index = 3 #round(sum(map(lambda z: z.index, cube_zones)) / len(cube_zones))
+        # forced to be 3 for consistency
 
         for cube_info in self.cube_infos:
             zone_index = None
@@ -273,16 +281,20 @@ class MainProgram:
                     zone_index -= 1
                     self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
                     cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
+                self.move_to_position(0.15, 0, 0.1, math.pi / 4)
             elif zone_index < mid_index:
                 while zone_index < mid_index:
                     zone_index += 1
                     self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
                     cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
+                self.move_to_position(0.15, 0, 0.1, math.pi / 4)
             elif zone_index == mid_index:
                 self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
                 cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
         
         # 4. Stack
+
+        self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2))
 
         for i in range(len(self.cube_infos) - 1):
             cube_info = self.cube_infos[i + 1 if i == 1 else i]
@@ -314,7 +326,7 @@ class MainProgram:
         # Close the gripper
         grip_request = JointPosition()
         grip_request.joint_name = ["gripper"]  
-        grip_request.position = [-0.0065] # -0.01 represents closed
+        grip_request.position = [-0.0067] # -0.01 represents closed
         self.set_gripper(str(), grip_request, 1.0)
         rospy.sleep(1) # Wait for the gripper to close
 
@@ -324,7 +336,7 @@ class MainProgram:
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
-        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06, self.get_distance_zone_angle(r - 0.06))
+        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06, self.get_distance_zone_angle(r - 0.08))
         # Move to cube, grip it and get out (directly up)
         self.move_to_position_by_r_and_alpha(r, alpha, -0.06, self.get_distance_zone_angle(r))
         self.close_gripper()
@@ -339,12 +351,16 @@ class MainProgram:
         self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + 0.14, self.get_distance_zone_angle(r))
 
         # Move to point and release
-        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.08 if second_stacking else 0.04 if stacking else 0), self.get_distance_zone_angle(r))
+        # The offset - 0.035 at 0, 0 at 0.35
+        # y = 0.35 - r / 10
+        self.move_to_position_by_r_and_alpha(r - (
+            0.02 if stacking and not second_stacking else 0 # max(0, 0.035 - r / 26) if (stacking or second_stacking) else 0
+        ), alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
         self.open_gripper()
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
-        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06 + (0.14), self.get_distance_zone_angle(r - 0.06))
+        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06 + (0.14), self.get_distance_zone_angle(r - 0.08))
 
     def move_cube_on_alpha(self, cube_info, new_alpha, stacking = False, second_stacking = False):
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)
@@ -353,10 +369,8 @@ class MainProgram:
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)
 
     def move_cube_on_r(self, cube_info, new_r):
-        self.move_to_position(0.15, 0, 0.1, math.pi / 4)
         self.grab_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
         self.place_at_coords(new_r, self.get_alpha(cube_info.point))
-        self.move_to_position(0.15, 0, 0.1, math.pi / 4)
 
     # def move_cube_on_table(self, point_from, point_to):
     #     self.grab_at_coords(point_from)

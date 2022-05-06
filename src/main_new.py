@@ -336,33 +336,32 @@ class MainProgram:
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
+        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, self.search_z, self.get_distance_zone_angle(r - 0.08))
         self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06, self.get_distance_zone_angle(r - 0.08))
         # Move to cube, grip it and get out (directly up)
         self.move_to_position_by_r_and_alpha(r, alpha, -0.06, self.get_distance_zone_angle(r))
         self.close_gripper()
         # TODO: This might limit the space. If too far away, make it go back as well or something
-        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + 0.14, self.get_distance_zone_angle(r))
+        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r - 0.08))
 
     def place_at_coords(self, r, alpha, stacking = False, second_stacking = False):
         # TODO: Change this beta value according to r-zone!
         beta = math.pi / 2
 
         # TODO: Check that this goes far above enough to clear the cube below if it's stacking
-        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + 0.14, self.get_distance_zone_angle(r))
+        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r - 0.08))
 
         # Move to point and release
         # The offset - 0.035 at 0, 0 at 0.35
         # y = 0.35 - r / 10
-        self.move_to_position_by_r_and_alpha(r - (
-            0# 0.02 if stacking or second_stacking else 0 # max(0, 0.035 - r / 26) if (stacking or second_stacking) else 0
-        ), alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
+        if stacking or second_stacking:
+            self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.101 if second_stacking else 0.063 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
         self.open_gripper()
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
-        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06 + (0.14), self.get_distance_zone_angle(r - 0.08))
-        if stacking:
-            self.move_to_position_by_r_and_alpha(r - 0.08, alpha, 0.15, self.get_distance_zone_angle(r - 0.08))
+        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r - 0.08))
 
     def move_cube_on_alpha(self, cube_info, new_alpha, stacking = False, second_stacking = False):
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)

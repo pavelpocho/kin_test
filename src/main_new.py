@@ -8,9 +8,9 @@ from geometry_msgs.msg import Point
 from open_manipulator_msgs.msg import JointPosition
 from open_manipulator_msgs.srv import SetJointPosition
 
-from cube_locator.msg import RealCubeArray, RealCube
+from cube_spotter.msg import Cube_co_Array, cube_co
 
-CUBE_POSITIONS_TOPIC_NAME = '/real_cubes'
+CUBE_POSITIONS_TOPIC_NAME = '/Cordinates'
 
 class CubeInfo:
 
@@ -132,19 +132,24 @@ class MainProgram:
             ))
 
     def sub_to_cube_info(self):
-        self.cube_position_subscriber = rospy.Subscriber(CUBE_POSITIONS_TOPIC_NAME, RealCubeArray, self.cube_info_handler)
+        # This format:
+        self.cube_position_subscriber = rospy.Subscriber(CUBE_POSITIONS_TOPIC_NAME, Cube_co_Array, self.cube_info_handler)
+        pass
+        
 
     def cube_info_handler(self, msg):
         if self.sequence_complete or not self.searching:
             return
 
-        for cube in msg.cubes:
-            if cube.color.data == 'yellow' and not 'yellow' in self.excluded_colors:
-                self.yellow_cube_locations.append(cube.position)
-            elif cube.color.data == 'red' and not 'red' in self.excluded_colors:
-                self.red_cube_locations.append(cube.position)
-            elif cube.color.data == 'blue' and not 'blue' in self.excluded_colors:
-                self.blue_cube_locations.append(cube.position)
+        for cube in msg.Position:
+            print('Got cube')
+            print(cube)
+            if cube.CubeColour.data == 'yellow' and not 'yellow' in self.excluded_colors:
+                self.yellow_cube_locations.append(cube)
+            elif cube.CubeColour.data == 'red' and not 'red' in self.excluded_colors:
+                self.red_cube_locations.append(cube)
+            elif cube.CubeColour.data == 'blue' and not 'blue' in self.excluded_colors:
+                self.blue_cube_locations.append(cube)
 
     def move_to_position(self, x, y, z, beta, stacking = False, short_search = False, long_search = False):
         request = IKinMsgRequest()
@@ -179,11 +184,11 @@ class MainProgram:
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
         for zone_index in range(4):
-            for alpha_index in range(5):
+            for alpha_index in range(1):
                 # scan every third zone for now, if they are
                 # e.g. bigger, change this
                 r = self.distance_zones[zone_index].get_mid_r()
-                alpha = ((alpha_index - 2) * 14) / 180.0 * math.pi
+                alpha = ((alpha_index) * 14) / 180.0 * math.pi
                 beta = self.distance_zones[zone_index].get_mid_beta()
                 
                 self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, beta, short_search=(alpha_index != 0), long_search=(alpha_index == 0))
@@ -199,9 +204,10 @@ class MainProgram:
 
     def add_final_cube_location(self, locations, id, color):
         p = Point()
-        p.x = self.get_average(map(lambda loc: loc.x, locations))
-        p.y = self.get_average(map(lambda loc: loc.y, locations))
-        p.z = self.get_average(map(lambda loc: loc.z, locations))
+        print(locations)
+        p.x = self.get_average(map(lambda loc: loc.x_co.data, locations))
+        p.y = self.get_average(map(lambda loc: -loc.y_co.data, locations))
+        p.z = -0.04
         self.cube_infos.append(CubeInfo(p, id, color))
 
     def get_r(self, point):
@@ -211,8 +217,10 @@ class MainProgram:
         return math.asin(point.y / self.get_r(point))
 
     def assess_situation(self):
+        print(self.yellow_cube_locations)
         # Step 1: Check how many cubes we have
         if len(self.yellow_cube_locations) > 5:
+            print("MORE THAN 5")
             self.add_final_cube_location(self.yellow_cube_locations, 1, 'yellow')
         if len(self.red_cube_locations) > 5:
             self.add_final_cube_location(self.red_cube_locations, 2, 'red')

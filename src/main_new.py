@@ -56,12 +56,9 @@ class DistanceZone:
         self.beta_max = beta_max
 
     def get_mid_beta(self):
-        print((self.beta_min + self.beta_max) / 2)
         return (self.beta_min + self.beta_max) / 2
 
     def get_mid_r(self):
-        print(self.r_min)
-        print(self.r_max)
         return (self.r_min + self.r_max) / 2
 
 
@@ -78,7 +75,7 @@ class MainProgram:
         self.search_move_time_short = 0.5
         self.search_move_time_long = 0.9
         self.search_rate = 1.8
-        self.search_z = 0.05
+        self.search_z = 0.035
 
         self.yellow_cube_locations = []
         self.red_cube_locations = []
@@ -127,8 +124,8 @@ class MainProgram:
                 i,
                 3.0 * (i + 3) / 100.0,              # every zone is 3 centimeters
                 3.0 * (i + 4) / 100.0,              # it ends after the 3 centimeters
-                (90.0 - (i + 2) * 10.0) / 180.0 * math.pi,              # say the range is 12 degrees in those 3 centimeters
-                (90.0 - i * 10.0) / 180.0 * math.pi                   # there will always be a 6 degree overlap
+                (90.0 - (i + 2) * 7.0) / 180.0 * math.pi,              # say the range is 12 degrees in those 3 centimeters
+                (90.0 - i * 7.0) / 180.0 * math.pi                   # there will always be a 6 degree overlap
             ))
 
     def sub_to_cube_info(self):
@@ -142,8 +139,6 @@ class MainProgram:
             return
 
         for cube in msg.Position:
-            print('Got cube')
-            print(cube)
             if cube.CubeColour.data == 'yellow' and not 'yellow' in self.excluded_colors:
                 self.yellow_cube_locations.append(cube)
             elif cube.CubeColour.data == 'red' and not 'red' in self.excluded_colors:
@@ -161,7 +156,6 @@ class MainProgram:
 
         response = self.inv_kin_proxy(request)
         r = [x.data for x in response.joint_positions]
-        print(r)
 
         if not response.success.data:
             print('Failed inverse kinematics. Where the heck did you send it?')
@@ -170,7 +164,7 @@ class MainProgram:
             jointRequest.joint_name = ['joint1', 'joint2', 'joint3', 'joint4']  
             jointRequest.position = [x.data for x in response.joint_positions]
             self.set_pose_proxy(str(), jointRequest, self.move_time * (3 if stacking else 1) * (1 if short_search else 1))
-            r = rospy.Rate(1 / (self.move_time * (3 if stacking else 1) * (1 if short_search else 1) * 1.1))
+            r = rospy.Rate(1 / (self.move_time * (3 if stacking else 1) * (1 if short_search else 1) * 1.05))
             r.sleep()
 
     def move_to_position_by_r_and_alpha(self, r, alpha, z, beta, stacking = False, short_search = False, long_search = False):
@@ -184,11 +178,11 @@ class MainProgram:
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
         for zone_index in range(4):
-            for alpha_index in range(1):
+            for alpha_index in range(5):
                 # scan every third zone for now, if they are
                 # e.g. bigger, change this
                 r = self.distance_zones[zone_index].get_mid_r()
-                alpha = ((alpha_index) * 14) / 180.0 * math.pi
+                alpha = ((alpha_index - 2) * 14) / 180.0 * math.pi
                 beta = self.distance_zones[zone_index].get_mid_beta()
                 
                 self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, beta, short_search=(alpha_index != 0), long_search=(alpha_index == 0))
@@ -220,7 +214,6 @@ class MainProgram:
         print(self.yellow_cube_locations)
         # Step 1: Check how many cubes we have
         if len(self.yellow_cube_locations) > 5:
-            print("MORE THAN 5")
             self.add_final_cube_location(self.yellow_cube_locations, 1, 'yellow')
         if len(self.red_cube_locations) > 5:
             self.add_final_cube_location(self.red_cube_locations, 2, 'red')
@@ -230,9 +223,6 @@ class MainProgram:
         # The sequence is now as follows:
         # 1. Order them by r distance
         self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2))
-
-        print("Cube infos")
-        print(self.cube_infos)
 
         # 2a. Always move in to a smaller r position and approach from the back
         # 2b. Move each to its own alpha section
@@ -284,30 +274,34 @@ class MainProgram:
             if zone_index is None:
                 continue
 
+            no_move_yet = True
+
             if zone_index > mid_index:
                 while zone_index > mid_index:
                     zone_index -= 1
-                    self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
+                    self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r(), start=no_move_yet, end=zone_index == mid_index)
                     cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
-                self.move_to_position(0.15, 0, 0.1, math.pi / 4)
+                    no_move_yet = False
             elif zone_index < mid_index:
                 while zone_index < mid_index:
                     zone_index += 1
-                    self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
+                    self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r(), start=no_move_yet, end=zone_index == mid_index)
                     cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
-                self.move_to_position(0.15, 0, 0.1, math.pi / 4)
+                    no_move_yet = False
             elif zone_index == mid_index:
-                self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r())
+                self.move_cube_on_r(cube_info, self.distance_zones[zone_index].get_mid_r(), start=True, end=True)
                 cube_info.set_r(self.distance_zones[zone_index].get_mid_r())
         
         # 4. Stack
 
-        self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2))
+        self.cube_infos.sort(key=lambda c: c.get_alpha(c.point))
 
         for i in range(len(self.cube_infos) - 1):
             cube_info = self.cube_infos[i + 1 if i == 1 else i]
             next_cube_info = self.cube_infos[i if i == 1 else i + 1]
             self.move_cube_on_alpha(cube_info, self.get_alpha(next_cube_info.point), True, i == 1)
+
+        self.move_to_position(0.15, 0, 0.1, math.pi / 4)
 
     def find_empty_alpha_section_for_cube(self, cube_info, alpha_sections):
         for section in alpha_sections:
@@ -338,48 +332,52 @@ class MainProgram:
         self.set_gripper(str(), grip_request, 1.0)
         rospy.sleep(1) # Wait for the gripper to close
 
-    def grab_at_coords(self, r, alpha):
+    def grab_at_coords(self, r, r_to_get_angle_from, alpha, no_up = False, no_down = False, stacking = False, second_stacking = False):
         # TODO: Change this beta value according to r-zone!
         beta = math.pi / 2
 
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
-        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, self.search_z, self.get_distance_zone_angle(r - 0.08))
-        self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06, self.get_distance_zone_angle(r - 0.08))
-        # Move to cube, grip it and get out (directly up)
-        self.move_to_position_by_r_and_alpha(r, alpha, -0.06, self.get_distance_zone_angle(r))
-        self.close_gripper()
-        # TODO: This might limit the space. If too far away, make it go back as well or something
-        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r))
+        if not no_down:
+            self.move_to_position_by_r_and_alpha(r - 0.08, alpha, self.search_z, self.get_distance_zone_angle(r_to_get_angle_from - 0.08))
+            self.move_to_position_by_r_and_alpha(r - 0.08, alpha, -0.06, self.get_distance_zone_angle(r_to_get_angle_from - 0.08))
 
-    def place_at_coords(self, r, alpha, stacking = False, second_stacking = False):
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.06, self.get_distance_zone_angle(r_to_get_angle_from))
+        self.close_gripper()
+        # Move to cube, grip it and get out (directly up)
+        # TODO: This might limit the space. If too far away, make it go back as well or something
+        if not no_up:
+            self.move_to_position_by_r_and_alpha(r, alpha, (0.101 if second_stacking else 0.063 if stacking else self.search_z), self.get_distance_zone_angle(r_to_get_angle_from))
+
+    def place_at_coords(self, r, r_to_get_angle_from, alpha, stacking = False, second_stacking = False, no_up = False, no_down = False):
         # TODO: Change this beta value according to r-zone!
         beta = math.pi / 2
 
         # TODO: Check that this goes far above enough to clear the cube below if it's stacking
-        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r))
+        if not no_down:
+            self.move_to_position_by_r_and_alpha(r, alpha, (0.101 if second_stacking else 0.063 if stacking else 0), self.get_distance_zone_angle(r_to_get_angle_from))
 
         # Move to point and release
         # The offset - 0.035 at 0, 0 at 0.35
         # y = 0.35 - r / 10
         if stacking or second_stacking:
-            self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.101 if second_stacking else 0.063 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
-        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r), stacking or second_stacking)
-        self.open_gripper()
+            self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.101 if second_stacking else 0.063 if stacking else 0), self.get_distance_zone_angle(r_to_get_angle_from), stacking or second_stacking)
+        self.move_to_position_by_r_and_alpha(r, alpha, -0.06 + (0.076 if second_stacking else 0.038 if stacking else 0), self.get_distance_zone_angle(r_to_get_angle_from), stacking or second_stacking)
 
+        self.open_gripper()
         # Move 6 cm in front of the cube (where we know there is empty space)
         # Note: This does decrease the available workspace
-        self.move_to_position_by_r_and_alpha(r, alpha, self.search_z, self.get_distance_zone_angle(r))
+        if not no_up:
+            self.move_to_position_by_r_and_alpha(r, alpha, (0.101 if second_stacking else 0.063 if stacking else self.search_z), self.get_distance_zone_angle(r_to_get_angle_from))
 
     def move_cube_on_alpha(self, cube_info, new_alpha, stacking = False, second_stacking = False):
-        self.move_to_position(0.15, 0, 0.1, math.pi / 4)
-        self.grab_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
-        self.place_at_coords(self.get_r(cube_info.point), new_alpha, stacking, second_stacking)
-        self.move_to_position(0.15, 0, 0.1, math.pi / 4)
+        self.grab_at_coords(self.get_r(cube_info.point), self.get_r(cube_info.point), self.get_alpha(cube_info.point), stacking=stacking, second_stacking=second_stacking)
+        self.place_at_coords(self.get_r(cube_info.point), self.get_r(cube_info.point), new_alpha, stacking=stacking, second_stacking=second_stacking)
 
-    def move_cube_on_r(self, cube_info, new_r):
-        self.grab_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
-        self.place_at_coords(new_r, self.get_alpha(cube_info.point))
+
+    def move_cube_on_r(self, cube_info, new_r, start = False, end = False):
+        self.grab_at_coords(self.get_r(cube_info.point), self.get_r(cube_info.point), self.get_alpha(cube_info.point), no_up=True, no_down=not start)
+        self.place_at_coords(new_r, self.get_r(cube_info.point), self.get_alpha(cube_info.point), no_up=not end, no_down=True)
 
     # def move_cube_on_table(self, point_from, point_to):
     #     self.grab_at_coords(point_from)

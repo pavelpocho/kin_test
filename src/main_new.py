@@ -109,6 +109,7 @@ class MainProgram:
         rospy.wait_for_service('/goal_joint_space_path')
         self.set_gripper = rospy.ServiceProxy('/goal_tool_control', SetJointPosition)
         rospy.wait_for_service('/goal_tool_control')
+        self.open_gripper()
 
     def get_distance_zone_angle(self, r):
         for z in self.distance_zones:

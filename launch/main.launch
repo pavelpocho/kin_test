@@ -1,9 +1,10 @@
 <launch>
-    <!--<include file="$(find robotics_cswk_kin)/launch/start_kin_services.launch" />-->
+    <include file="$(find robotics_cswk_kin)/launch/start_kin_services.launch" />
+    <include file="$(find cube_spotter)/launch/spot_and_track.launch" />
 
     <node
         pkg="kin_test"
-        type="main.py"
+        type="main_new.py"
         name="main_program"
         output="screen"
     />

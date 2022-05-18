@@ -180,9 +180,9 @@ class MainProgram:
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
         for zone_index in range(4):
-            print("Distance zone" + print(zone_index))
+            print("Distance zone" + str(zone_index))
             for alpha_index in range(5):
-                print("Angle zone" + print(alpha_index))
+                print("Angle zone" + str(alpha_index))
                 # scan every third zone for now, if they are
                 # e.g. bigger, change this
                 r = self.distance_zones[zone_index].get_mid_r()
@@ -222,7 +222,7 @@ class MainProgram:
         if len(self.blue_cube_locations) > 5:
             self.add_final_cube_location(self.blue_cube_locations, 3, 'blue')
         
-        if len(self.cube_infos < 2):
+        if len(self.cube_infos) < 2:
             raise Exception("Nothing to stack")
         else:
             print("Found " + str(len(self.cube_infos)) + " cubes.")

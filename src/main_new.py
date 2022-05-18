@@ -83,6 +83,7 @@ class MainProgram:
 
         self.cube_infos = []
 
+        print("Setting up")
         self.setup()
 
         # 0. Specify distance zones and approach angles
@@ -90,16 +91,17 @@ class MainProgram:
         self.specify_distance_zones()
 
         # 1. Sub to cube information and read it
+        print("Subscribing to cube position info")
         self.sub_to_cube_info()
 
         # 2. Search (move around), detect cube positions and average them
+        print("Searching...")
         self.search()
 
         # 3. We now have a map of cubes
         # 4. Assess the situation
+        print("Moving cubes...")
         self.assess_situation()
-
-        pass
 
     def setup(self):
         # Initialize inverse kinematics service proxy and wait for the service
@@ -158,7 +160,7 @@ class MainProgram:
         response = self.inv_kin_proxy(request)
         r = [x.data for x in response.joint_positions]
 
-        if not response.success.data:
+        if not response.success.data or request.position.x < 0.02:
             print('Failed inverse kinematics. Where the heck did you send it?')
         else:
             jointRequest=JointPosition()
@@ -173,13 +175,14 @@ class MainProgram:
 
     def search(self, excluded_colors = []):
         # Move to initial position
-        print("Searching")
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)
 
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
         for zone_index in range(4):
+            print("Distance zone" + print(zone_index))
             for alpha_index in range(5):
+                print("Angle zone" + print(alpha_index))
                 # scan every third zone for now, if they are
                 # e.g. bigger, change this
                 r = self.distance_zones[zone_index].get_mid_r()
@@ -199,7 +202,6 @@ class MainProgram:
 
     def add_final_cube_location(self, locations, id, color):
         p = Point()
-        print(locations)
         p.x = self.get_average(map(lambda loc: loc.x_co.data, locations))
         p.y = self.get_average(map(lambda loc: -loc.y_co.data, locations))
         p.z = -0.04
@@ -212,7 +214,6 @@ class MainProgram:
         return math.asin(point.y / self.get_r(point))
 
     def assess_situation(self):
-        print(self.yellow_cube_locations)
         # Step 1: Check how many cubes we have
         if len(self.yellow_cube_locations) > 5:
             self.add_final_cube_location(self.yellow_cube_locations, 1, 'yellow')
@@ -221,6 +222,11 @@ class MainProgram:
         if len(self.blue_cube_locations) > 5:
             self.add_final_cube_location(self.blue_cube_locations, 3, 'blue')
         
+        if len(self.cube_infos < 2):
+            raise Exception("Nothing to stack")
+        else:
+            print("Found " + str(len(self.cube_infos)) + " cubes.")
+
         # The sequence is now as follows:
         # 1. Order them by r distance
         self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2))
@@ -233,6 +239,7 @@ class MainProgram:
             [-85.0 / 180.0 * math.pi, -40.0 / 180.0 * math.pi]
         ]
         colors_to_exclude = []
+        print("Separating cubes...")
         for cube_info in self.cube_infos:
             free_section = self.find_empty_alpha_section_for_cube(cube_info, alpha_sections)
             self.move_cube_on_alpha(cube_info, self.get_average(free_section))
@@ -252,6 +259,7 @@ class MainProgram:
         #     self.grab_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
         #     self.place_at_coords(self.get_r(cube_info.point), self.get_alpha(cube_info.point))
 
+        
         cube_zones = []
 
         self.cube_infos.sort(key=lambda c: math.sqrt(c.point.x ** 2 + c.point.y ** 2), reverse=True)
@@ -264,6 +272,8 @@ class MainProgram:
 
         mid_index = 3 #round(sum(map(lambda z: z.index, cube_zones)) / len(cube_zones))
         # forced to be 3 for consistency
+
+        print("Moving to same distance...")
 
         for cube_info in self.cube_infos:
             zone_index = None
@@ -295,6 +305,8 @@ class MainProgram:
         
         # 4. Stack
 
+        print("Stacking...")
+
         self.cube_infos.sort(key=lambda c: c.get_alpha(c.point))
 
         for i in range(len(self.cube_infos) - 1):
@@ -303,6 +315,7 @@ class MainProgram:
             self.move_cube_on_alpha(cube_info, self.get_alpha(next_cube_info.point), True, i == 1)
 
         self.move_to_position(0.15, 0, 0.1, math.pi / 4)
+        print("Done.")
 
     def find_empty_alpha_section_for_cube(self, cube_info, alpha_sections):
         for section in alpha_sections:
@@ -398,148 +411,3 @@ if __name__ == "__main__":
         main = MainProgram()
     except rospy.ROSInterruptException:
         pass
-
-
-# i = 0
-
-# scanned = False
-# executed = False
-# initialized = False
-# done = False
-# measure = False
-
-# x_red = []
-# y_red = []
-# z_red = []
-
-# x_yellow = []
-# y_yellow = []
-# z_yellow = []
-
-# def real_cube_data_handler(msg):
-
-#     global i 
-#     i += 1
-#     if i % 1 != 0:
-#         return
-
-#     global x
-#     global y
-#     global z
-
-#     global scanned
-#     global executed
-#     global initialized
-#     global done
-#     global measure
-
-#     if not initialized or done or not measure:
-#         return
-
-#     for c in msg.cubes:
-#         if c.color.data == "yellow":
-#             x_yellow.append(c.position.x)
-#             y_yellow.append(c.position.y)
-#             z_yellow.append(c.position.z)
-#         elif c.color.data == "red":
-#             print("adding to red")
-#             x_red.append(c.position.x)
-#             y_red.append(c.position.y)
-#             z_red.append(c.position.z)
-
-#     # if len(x) > 0 and len(msg.cubes) > 0:
-#     #     rospy.loginfo(sum(x) / len(x))
-#     #     rospy.loginfo(sum(y) / len(y))
-#     #     rospy.loginfo(sum(z) / len(z))
-
-# def move_to_position(x, y, z, angle, time):
-#     request = IKinMsgRequest()
-#     request.position = Point()
-#     request.position.x = x
-#     request.position.y = y
-#     request.position.z = z
-#     request.angle.data = angle
-
-#     response = proxy(request)
-#     r = [x.data for x in response.joint_positions]
-#     print(r)
-
-#     if not response.success.data:
-#         print('Failed inv kin')
-#     else:
-#         setPose = rospy.ServiceProxy('/goal_joint_space_path', SetJointPosition)
-
-#         rospy.wait_for_service('/goal_joint_space_path')
-
-#         jointRequest=JointPosition()
-#         jointRequest.joint_name=["joint1","joint2","joint3","joint4"]  
-#         jointRequest.position=[x.data for x in response.joint_positions]
-#         setPose(str(), jointRequest, time)
-
-#     r = rospy.Rate(1 / (time * 1.3))
-#     r.sleep()
-
-# def open_gripper():
-#     # Open the gripper
-#     gripperRequest=JointPosition()
-#     gripperRequest.joint_name=["gripper"] 
-#     gripperRequest.position=[0.01]# 0.01 represents open
-#     setGripper(str(),gripperRequest,1.0)
-
-#     rospy.sleep(1) # Wait for the gripper to open
-
-# def close_gripper():
-#     # Close the gripper
-#     gripperRequest=JointPosition()
-#     gripperRequest.joint_name=["gripper"]  
-#     gripperRequest.position=[-0.0065]# -0.01 represents closed
-#     setGripper(str(),gripperRequest,1.5)
-
-#     rospy.sleep(1) # Wait for the gripper to close
-
-# real_cubes_sub = rospy.Subscriber('/real_cubes', RealCubeArray, real_cube_data_handler)
-# setGripper = rospy.ServiceProxy('goal_tool_control', SetJointPosition)
-
-# move_to_position(0.15, 0, 0.1, math.pi / 4, 1.7)
-
-# initialized = True
-
-# for k in range(2):
-#     if len(x_yellow) > 1 and len(x_red) > 1:
-#         break
-#     print("Going for position", k)
-#     angle = math.pi / 2
-#     if k > 0:
-#         angle = math.pi / 4
-#     move_to_position(0.05 + 0.08 * k, 0, 0.1, angle, 1.0)
-#     s = rospy.Rate(3)
-#     measure = True
-#     s.sleep()
-#     measure = False
-
-# scanned = True
-
-# while not (scanned and not executed and len(x_yellow) > 0 and len(x_red) > 0):
-#     sl = rospy.Rate(1)
-#     sl.sleep()
-
-# executed = True
-# angle = math.pi / 12
-# z = -0.04
-# if math.sqrt((sum(x_yellow) / len(x_yellow)) ** 2 + (sum(y_yellow) / len(y_yellow)) ** 2) < 0.2:
-#     angle = math.pi / 2
-#     z = -0.05
-# elif math.sqrt((sum(x_yellow) / len(x_yellow)) ** 2 + (sum(y_yellow) / len(y_yellow)) ** 2) < 0.3:
-#     angle = math.pi / 4
-#     z = -0.045
-# move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z + 0.05, angle, 2.0)
-# move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z, angle, 2.0)
-# close_gripper()
-# move_to_position(sum(x_yellow) / len(x_yellow), sum(y_yellow) / len(y_yellow), z + 0.1, angle, 2.0)
-# move_to_position(sum(x_red) / len(x_red) - 0.005, sum(y_red) / len(y_red), z + 0.1, angle, 2.0)
-# move_to_position(sum(x_red) / len(x_red) - 0.005, sum(y_red) / len(y_red), z + 0.04, angle, 2.0)
-# open_gripper()
-
-# move_to_position(0.15, 0, 0.1, math.pi / 4, 3.0)
-
-# done = True

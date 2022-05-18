@@ -179,7 +179,7 @@ class MainProgram:
 
         # Always run through all the positions so as to spot
         # all the cubes that could possibly be somewhere
-        for zone_index in range(4):
+        for zone_index in range(5):
             print("Distance zone" + str(zone_index))
             for alpha_index in range(5):
                 print("Angle zone" + str(alpha_index))
